@@ -1,0 +1,45 @@
+# =========================
+# Python
+# =========================
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# =========================
+# Neuroimaging outputs
+# =========================
+derivatives/
+outputs/
+results/
+figures/
+temp/
+
+# Large generated files
+*.nii
+*.nii.gz
+*.img
+*.hdr
+
+# If using ANTs/FSL outputs
+*Warp*
+*Affine*
+*InverseWarp*
