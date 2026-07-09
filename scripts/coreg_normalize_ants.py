@@ -16,7 +16,6 @@ import ants
 
 TASKS = ["rest", "fe"]
 
-T1W_DIR       = "data/raw_t1w"
 PROCESSED_DIR = "data/processed"
 RESULTS_DIR   = "results"
 
@@ -51,7 +50,7 @@ def coreg_and_normalize_subject(sub_id, task_name, mni_ants, mni_affine):
     Full Step 4 + Step 5 for one subject/task.
     """
     clean_bold_path = f"{PROCESSED_DIR}/{sub_id}_task-{task_name}_clean_bold.nii.gz"
-    t1w_path        = f"{T1W_DIR}/{sub_id}_T1w.nii.gz"
+    t1w_path        = f"data/raw/{sub_id}/anat/{sub_id}_T1w.nii.gz"
     qpp_path        = f"{RESULTS_DIR}/{task_name}/{sub_id}_qpp_template.nii.gz"
     mni_qpp_path    = f"{RESULTS_DIR}/{task_name}/{sub_id}_qpp_template_MNI_ANTs.nii.gz"
 
