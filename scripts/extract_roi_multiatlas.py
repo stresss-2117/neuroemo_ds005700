@@ -151,23 +151,85 @@ if __name__ == "__main__":
 
     os.makedirs("results/roi_tables", exist_ok=True)
 
-    # ── CONFIGURE WHAT YOU WANT HERE ──────────────────────────────
-    QPP_FILE = "results/rest/sub-01_qpp_template_MNI_ANTs.nii.gz"
+    ALL_SUBJECTS = [f"sub-{i:02d}" for i in range(1, 41)]
+    TASKS = ["rest", "fe"]
 
-    # Pick ONE atlas, or MIX several — this is the flexibility you wanted:
-    ATLASES_TO_USE = ["schaefer"]              # just one
-    # ATLASES_TO_USE = ["aal", "schaefer"]      # a mix
+    # ── CONFIGURE YOUR ATLAS MIX HERE ─────────────────────────────
+    ATLASES_TO_USE = ["aal", "schaefer"]   # mix of 3
+    # ATLASES_TO_USE = ["schaefer"]                 # just one
     # ATLASES_TO_USE = list(ATLAS_REGISTRY.keys())  # everything
 
-    print(f"Extracting ROI values from: {QPP_FILE}")
-    print(f"Using atlases: {ATLASES_TO_USE}")
+    def compute_group_average_qpp(task_name, subject_ids):
+        """Average all subjects' MNI-ANTs QPP (middle frame) for one task."""
+        all_data = []
+        affine = None
+        used = []
 
-    df_result = extract_multiatlas(QPP_FILE, ATLASES_TO_USE)
+        for sub_id in subject_ids:
+            path = f"results/{task_name}/{sub_id}_qpp_template_MNI_ANTs.nii.gz"
+            if not os.path.exists(path):
+                continue
+            img = nib.load(path)
+            data = img.get_fdata()
+            mid = data.shape[3] // 2
+            all_data.append(data[:, :, :, mid])
+            used.append(sub_id)
+            if affine is None:
+                affine = img.affine
 
-    print("\nResult preview:")
-    print(df_result.head(10))
-    print(f"\nTotal ROIs extracted: {len(df_result)}")
+        if not all_data:
+            return None, []
 
-    out_path = "results/roi_tables/sub-01_rest_multiatlas.csv"
-    df_result.to_csv(out_path, index=False)
-    print(f"\nSaved -> {out_path}")
+        group_data = np.mean(all_data, axis=0)
+        group_img = nib.Nifti1Image(group_data, affine)
+        return group_img, used
+
+    # ── Run for each task ──────────────────────────────────────────
+    all_results = {}
+
+    for task_name in TASKS:
+        print(f"\n{'='*60}")
+        print(f"TASK: {task_name}")
+        print(f"{'='*60}")
+
+        group_img, used = compute_group_average_qpp(task_name, ALL_SUBJECTS)
+        if group_img is None:
+            print(f"  No subjects found for {task_name}, skipping.")
+            continue
+
+        print(f"  Group average from {len(used)} subjects")
+
+        tmp_path = f"results/{task_name}/group_average_MNI_ANTs.nii.gz"
+        nib.save(group_img, tmp_path)
+
+        all_rows = []
+        for atlas_name in ATLASES_TO_USE:
+            if atlas_name not in ATLAS_REGISTRY:
+                print(f"  Unknown atlas '{atlas_name}', skipping.")
+                continue
+            print(f"\n  Loading atlas: {atlas_name}...")
+            atlas_img, label_map = ATLAS_REGISTRY[atlas_name]()
+            print(f"  Extracting ROI values ({len(label_map)} regions)...")
+            df = extract_roi_values(group_img, atlas_img, label_map)
+            df["Atlas"] = atlas_name
+            df["Task"] = task_name
+            all_rows.append(df)
+
+        df_task = pd.concat(all_rows, ignore_index=True)
+        df_task = df_task[df_task["ROI"] != "Background"]   # clean up
+
+        out_path = f"results/roi_tables/group_{task_name}_multiatlas.csv"
+        df_task.to_csv(out_path, index=False)
+        print(f"\n  Saved -> {out_path}  ({len(df_task)} rows)")
+
+        all_results[task_name] = df_task
+
+    # ── Combine rest + emotion into one master table ────────────────
+    if len(all_results) == 2:
+        df_combined = pd.concat(all_results.values(), ignore_index=True)
+        combined_path = "results/roi_tables/group_all_tasks_multiatlas.csv"
+        df_combined.to_csv(combined_path, index=False)
+        print(f"\nCombined table saved -> {combined_path}")
+        print(f"Total rows: {len(df_combined)}")
+
+    print("\nDone! ROI tables ready for plotting.")
