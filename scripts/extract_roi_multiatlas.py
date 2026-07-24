@@ -43,9 +43,8 @@ def load_schaefer(n_rois=400, yeo_networks=7):
 
 def load_yeo(n_networks=7):
     """Yeo — network-level functional atlas, cortex only."""
-    yeo = datasets.fetch_atlas_yeo_2011()
-    key = "thick_7" if n_networks == 7 else "thick_17"
-    atlas_img = nib.load(yeo[key])
+    yeo = datasets.fetch_atlas_yeo_2011(n_networks=n_networks, thickness="thick")
+    atlas_img = nib.load(yeo.maps)   # or yeo['maps']
     network_names_7 = [
         "Visual", "Somatomotor", "DorsalAttention", "VentralAttention",
         "Limbic", "Frontoparietal", "Default"
@@ -70,16 +69,6 @@ ATLAS_REGISTRY = {
 # ══════════════════════════════════════════════════════════════
 
 def extract_roi_values(qpp_img, atlas_img, label_map, frame=None):
-    """
-    Extract mean QPP value within each ROI of a given atlas.
-
-    qpp_img   : nibabel image, either 3D or 4D (if 4D, averaged over frame)
-    atlas_img : nibabel image, integer-labeled parcellation
-    label_map : dict {roi_id: roi_name}
-    frame     : which QPP frame to use if 4D (default: middle frame)
-
-    Returns: DataFrame with columns ['ROI', 'Weights']
-    """
     qpp_data = qpp_img.get_fdata()
 
     if qpp_data.ndim == 4:
@@ -91,11 +80,12 @@ def extract_roi_values(qpp_img, atlas_img, label_map, frame=None):
 
     qpp_3d_img = nib.Nifti1Image(qpp_3d, qpp_img.affine)
 
-    # Resample atlas to match QPP resolution/space
     atlas_resampled = resample_to_img(
         atlas_img, qpp_3d_img, interpolation='nearest'
     )
     atlas_data = atlas_resampled.get_fdata().astype(int)
+    if atlas_data.ndim == 4:
+        atlas_data = atlas_data[..., 0]   # squeeze Yeo's trailing singleton dim
 
     rows = []
     for roi_id, roi_name in label_map.items():
@@ -155,7 +145,7 @@ if __name__ == "__main__":
     TASKS = ["rest", "fe"]
 
     # ── CONFIGURE YOUR ATLAS MIX HERE ─────────────────────────────
-    ATLASES_TO_USE = ["aal", "schaefer"]   # mix of 3
+    ATLASES_TO_USE = ["aal", "schaefer", "yeo7"]   # mix of 3
     # ATLASES_TO_USE = ["schaefer"]                 # just one
     # ATLASES_TO_USE = list(ATLAS_REGISTRY.keys())  # everything
 

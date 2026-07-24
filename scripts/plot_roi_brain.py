@@ -81,14 +81,11 @@ def plot_fig(tmap, nrow, ncol, figsize, annotate=False, save=False, close=False,
 # ══════════════════════════════════════════════════════════════
 
 def vals2atlas_nilearn(df, selected_atlas, atlas_img, label_map, stat='Weights'):
-    """
-    Paint ROI values from df onto the atlas image.
-    Same result as professor's vals2atlas(), just reading labels
-    from nilearn's fetcher output instead of a CSV file.
-    """
     print(f'\t{selected_atlas}...', end='')
 
     atlas_data = atlas_img.get_fdata().copy()
+    if atlas_data.ndim == 4:
+        atlas_data = atlas_data[..., 0]   # squeeze Yeo's trailing singleton dim
 
     results_selected_atlas = df[df['Atlas'] == selected_atlas]
     roi_to_val = dict(zip(results_selected_atlas['ROI'], results_selected_atlas[stat]))
@@ -118,8 +115,8 @@ def get_atlas(atlas_name):
         labels = [l.decode() if isinstance(l, bytes) else l for l in schaefer.labels]
         label_map = {i + 1: name for i, name in enumerate(labels)}
     elif atlas_name == "yeo7":
-        yeo = datasets.fetch_atlas_yeo_2011()
-        atlas_img = nb.load(yeo["thick_7"])
+        yeo = datasets.fetch_atlas_yeo_2011(n_networks=7, thickness="thick")
+        atlas_img = nb.load(yeo.maps)
         names = ["Visual","Somatomotor","DorsalAttention","VentralAttention",
                  "Limbic","Frontoparietal","Default"]
         label_map = {i + 1: name for i, name in enumerate(names)}
@@ -137,7 +134,7 @@ if __name__ == "__main__":
     os.makedirs("results/figures/roi_plots", exist_ok=True)
 
     TASKS = ["rest", "fe"]
-    ATLASES = ["aal", "schaefer"]   # mix — change freely
+    ATLASES = ["aal", "schaefer", "yeo7"]   # mix — change freely
 
     for task_name in TASKS:
         csv_path = f"results/roi_tables/group_{task_name}_multiatlas.csv"
