@@ -15,6 +15,8 @@ from nilearn.image import load_img
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 from matplotlib import cm
+from nilearn import plotting
+from nilearn import surface
 
 template = datasets.load_mni152_template(resolution=1)
 
@@ -22,7 +24,7 @@ template = datasets.load_mni152_template(resolution=1)
 # ══════════════════════════════════════════════════════════════
 # plot_fig() — EXACT COPY, unchanged from your professor's code
 # ══════════════════════════════════════════════════════════════
-def plot_fig(tmap, nrow, ncol, figsize, annotate=False, save=False, close=False,
+def plot_fig(tmap, nrow, ncol, figsize, annotate=True, save=False, close=False,
              display_mode='x', labelsize=12, orientation='vertical',
              cbar_label='ReHo Difference', plot_save_path='figure.png'):
 
@@ -73,6 +75,40 @@ def plot_fig(tmap, nrow, ncol, figsize, annotate=False, save=False, close=False,
 
     return fig, axes
 
+
+def plot_surface(tmap, cmap='cold_hot', save_path='cortex_surface.png'):
+    """Cortical surface rendering (lateral+medial, both hemispheres) — clean discrete boundaries."""
+    from nilearn import datasets, surface, plotting
+    import matplotlib.pyplot as plt
+
+    fsaverage = datasets.fetch_surf_fsaverage()
+
+    fig, axes = plt.subplots(2, 2, subplot_kw={'projection': '3d'}, figsize=(10, 8))
+    fig.suptitle('Cortex')
+
+    views_hemis = [
+        ('left',  'lateral', fsaverage.infl_left,  fsaverage.sulc_left),
+        ('right', 'lateral', fsaverage.infl_right, fsaverage.sulc_right),
+        ('left',  'medial',  fsaverage.infl_left,  fsaverage.sulc_left),
+        ('right', 'medial',  fsaverage.infl_right, fsaverage.sulc_right),
+    ]
+
+    for ax, (hemi, view, infl, sulc) in zip(axes.flat, views_hemis):
+        pial = fsaverage.pial_left if hemi == 'left' else fsaverage.pial_right
+        texture = surface.vol_to_surf(tmap, pial, interpolation='nearest_most_frequent')  # <- key fix: no blending across boundaries
+
+        plotting.plot_surf_stat_map(
+            infl, texture,
+            hemi=hemi, view=view,
+            bg_map=sulc,
+            cmap=cmap,
+            colorbar=(ax is axes.flat[-1]),  # only one shared colorbar
+            axes=ax,
+        )
+
+    plt.savefig(save_path, dpi=200, bbox_inches='tight')
+    plt.close(fig)
+    return fig
 
 # ══════════════════════════════════════════════════════════════
 # vals2atlas() — SAME LOGIC as your professor's version,
@@ -159,5 +195,11 @@ if __name__ == "__main__":
                 plot_save_path=out_path
             )
             print(f"  Saved -> {out_path}")
+
+
+            # NEW: cortical surface plot
+            surf_path = f"results/figures/roi_plots/group_{task_name}_{atlas_name}_surface.png"
+            plot_surface(tmap, save_path=surf_path)
+            print(f"  Saved -> {surf_path}")
 
     print("\nAll ROI-parcellated brain plots complete!")
