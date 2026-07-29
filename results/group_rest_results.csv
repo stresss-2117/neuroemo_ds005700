@@ -1,0 +1,2 @@
+sub_id,task,n_peaks,mean_corr,avg_interval,peak_times_s,window_sec,tr,n_timepoints,n_brain_vox
+sub-27,rest,10,0.481805159607835,50.0,[ 32.  96. 184. 236. 282. 314. 358. 370. 422. 436.],20,2.0,250,57371

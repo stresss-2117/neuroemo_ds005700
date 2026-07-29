@@ -27,11 +27,7 @@ Thumbs.db
 # =========================
 # Neuroimaging outputs
 # =========================
-derivatives/
-outputs/
-results/
-figures/
-temp/
+
 
 # Large generated files
 *.nii
