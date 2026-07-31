@@ -9,7 +9,7 @@ Generates:
   5. Group-level spatial map overlaid on MNI template
 
 Usage:
-  python 03_visualize.py [--tasks rest fe] [--method swc seed]
+  python scripts/03_visualize.py [--tasks rest emotion] [--method swc seed] [--subjects sub-01 sub-02]
 """
 
 import argparse
@@ -24,16 +24,18 @@ import matplotlib.pyplot as plt
 import nibabel as nib
 import numpy as np
 from nilearn import image, plotting
-from nilearn.datasets import load_mni152_brain_mask
 
 # ── Paths ──────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
-PREPROC_DIR = BASE_DIR / "preprocessed"
-QPP_DIR = BASE_DIR / "qpp_analysis"
+
+# Updated directory mapping to match actual pipeline structure
+PREPROC_DIR = BASE_DIR / "data" / "processed"
+QPP_DIR = BASE_DIR / "results"
 FIG_DIR = BASE_DIR / "outputs" / "figures"
 LOG_DIR = BASE_DIR / "outputs" / "logs"
 
 FIG_DIR.mkdir(parents=True, exist_ok=True)
+LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 _stream_handler = logging.StreamHandler(sys.stdout)
 _stream_handler.stream = open(sys.stdout.fileno(), mode="w", encoding="utf-8", buffering=1)
@@ -55,36 +57,57 @@ log = logging.getLogger(__name__)
 def load_summaries(subjects: list, task: str) -> list:
     records = []
     for sub in subjects:
-        p = QPP_DIR / sub / f"{sub}_task-{task}_qpp_summary.json"
-        if p.exists():
-            with open(p) as f:
-                records.append(json.load(f))
-        else:
-            log.warning(f"  Missing summary: {p.name}")
+        # Check both subject subfolders and task subfolders in results/
+        paths_to_check = [
+            QPP_DIR / sub / f"{sub}_task-{task}_qpp_summary.json",
+            QPP_DIR / task / f"{sub}_task-{task}_qpp_summary.json",
+            QPP_DIR / f"{sub}_task-{task}_qpp_summary.json"
+        ]
+        found = False
+        for p in paths_to_check:
+            if p.exists():
+                with open(p) as f:
+                    records.append(json.load(f))
+                found = True
+                break
+        if not found:
+            log.warning(f"  Missing summary for {sub} task-{task}")
     return records
 
 
 def load_spatial_maps(subjects: list, task: str, method: str) -> list:
     imgs = []
     for sub in subjects:
-        if method == "swc":
-            p = QPP_DIR / sub / f"{sub}_task-{task}_swc_qpp_template.nii.gz"
-        else:
-            p = QPP_DIR / sub / f"{sub}_task-{task}_seed_corr_map.nii.gz"
-        if p.exists():
-            imgs.append(nib.load(str(p)))
-        else:
-            log.warning(f"  Missing map: {p.name}")
+        filename = f"{sub}_task-{task}_swc_qpp_template.nii.gz" if method == "swc" else f"{sub}_task-{task}_seed_corr_map.nii.gz"
+        
+        paths_to_check = [
+            QPP_DIR / sub / filename,
+            QPP_DIR / task / filename,
+            QPP_DIR / filename
+        ]
+        found = False
+        for p in paths_to_check:
+            if p.exists():
+                imgs.append(nib.load(str(p)))
+                found = True
+                break
+        if not found:
+            log.warning(f"  Missing map for {sub} task-{task} ({method})")
     return imgs
 
 
 def load_motion_fd(subjects: list, task: str) -> dict:
     fd_data = {}
     for sub in subjects:
-        p = PREPROC_DIR / sub / f"{sub}_task-{task}_fd.txt"
-        if p.exists():
-            fd = np.loadtxt(str(p))
-            fd_data[sub] = fd
+        paths_to_check = [
+            PREPROC_DIR / sub / f"{sub}_task-{task}_fd.txt",
+            PREPROC_DIR / f"{sub}_task-{task}_fd.txt"
+        ]
+        for p in paths_to_check:
+            if p.exists():
+                fd = np.loadtxt(str(p))
+                fd_data[sub] = fd
+                break
     return fd_data
 
 
@@ -100,11 +123,10 @@ def plot_group_spatial_map(imgs: list, task: str, method: str, out_dir: Path):
 
     log.info(f"  Computing group mean spatial map ({len(imgs)} subjects) …")
     ref = imgs[0]
-    resampled = [image.resample_to_img(img, ref, interpolation="continuous")
-                 for img in imgs]
+    resampled = [image.resample_to_img(img, ref, interpolation="continuous") for img in imgs]
     mean_img = image.mean_img(resampled)
 
-    out_nii = FIG_DIR / f"group_task-{task}_{method}_spatial_mean.nii.gz"
+    out_nii = out_dir / f"group_task-{task}_{method}_spatial_mean.nii.gz"
     nib.save(mean_img, str(out_nii))
 
     display = plotting.plot_stat_map(
@@ -112,7 +134,7 @@ def plot_group_spatial_map(imgs: list, task: str, method: str, out_dir: Path):
         title=f"Group QPP spatial map | task-{task} | {method.upper()} (N={len(imgs)})",
         colorbar=True, cmap="cold_hot", threshold=0.1,
     )
-    out_png = FIG_DIR / f"group_task-{task}_{method}_spatial_mean.png"
+    out_png = out_dir / f"group_task-{task}_{method}_spatial_mean.png"
     display.savefig(str(out_png), dpi=150)
     display.close()
     log.info(f"  Group map saved → {out_png.name}")
@@ -123,7 +145,7 @@ def plot_qpp_strength(records: list, task: str, method: str, out_dir: Path):
     subjects, strengths = [], []
     for r in records:
         if method in r and "mean_corr" in r[method]:
-            subjects.append(r["subject"])
+            subjects.append(r.get("subject", "unknown"))
             strengths.append(r[method]["mean_corr"])
 
     if not subjects:
@@ -153,7 +175,7 @@ def plot_periodicity_summary(records: list, task: str, method: str, out_dir: Pat
     subjects, periods, freqs = [], [], []
     for r in records:
         if method in r and "peak_period_s" in r[method]:
-            subjects.append(r["subject"])
+            subjects.append(r.get("subject", "unknown"))
             periods.append(r[method]["peak_period_s"])
             freqs.append(r[method]["peak_freq_hz"])
 
@@ -221,29 +243,25 @@ def plot_motion_qc_summary(subjects: list, task: str, out_dir: Path):
     plt.close(fig)
     log.info(f"  Motion QC summary saved → {out_path.name}")
 
-    # Flag high-motion subjects
-    flagged = [s for s, fd in zip(subs, mean_fds) if fd > 0.5]
-    if flagged:
-        log.warning(f"  High-motion subjects (mean FD>0.5mm): {flagged}")
-    return flagged
 
-
-def plot_rest_vs_fe_comparison(subjects: list, method: str, out_dir: Path):
+def plot_rest_vs_fe_comparison(subjects: list, method: str, out_dir: Path, tasks: list):
     """Scatter plot: QPP strength rest vs. emotion task per subject."""
-    rest_strengths, fe_strengths, paired_subs = [], [], []
+    t1, t2 = tasks[0], tasks[1]
+    strengths_t1, strengths_t2, paired_subs = [], [], []
 
     for sub in subjects:
-        rest_p = QPP_DIR / sub / f"{sub}_task-rest_qpp_summary.json"
-        fe_p = QPP_DIR / sub / f"{sub}_task-fe_qpp_summary.json"
-        if rest_p.exists() and fe_p.exists():
-            with open(rest_p) as f:
-                r_rest = json.load(f)
-            with open(fe_p) as f:
-                r_fe = json.load(f)
-            if method in r_rest and method in r_fe:
-                if "mean_corr" in r_rest[method] and "mean_corr" in r_fe[method]:
-                    rest_strengths.append(r_rest[method]["mean_corr"])
-                    fe_strengths.append(r_fe[method]["mean_corr"])
+        p1 = QPP_DIR / f"{sub}_task-{t1}_qpp_summary.json"
+        p2 = QPP_DIR / f"{sub}_task-{t2}_qpp_summary.json"
+        
+        if p1.exists() and p2.exists():
+            with open(p1) as f:
+                r1 = json.load(f)
+            with open(p2) as f:
+                r2 = json.load(f)
+            if method in r1 and method in r2:
+                if "mean_corr" in r1[method] and "mean_corr" in r2[method]:
+                    strengths_t1.append(r1[method]["mean_corr"])
+                    strengths_t2.append(r2[method]["mean_corr"])
                     paired_subs.append(sub)
 
     if len(paired_subs) < 2:
@@ -251,24 +269,24 @@ def plot_rest_vs_fe_comparison(subjects: list, method: str, out_dir: Path):
         return
 
     fig, ax = plt.subplots(figsize=(7, 7))
-    ax.scatter(rest_strengths, fe_strengths, color="steelblue", s=50, zorder=3)
-    lim_min = min(min(rest_strengths), min(fe_strengths)) * 0.9
-    lim_max = max(max(rest_strengths), max(fe_strengths)) * 1.1
+    ax.scatter(strengths_t1, strengths_t2, color="steelblue", s=50, zorder=3)
+    lim_min = min(min(strengths_t1), min(strengths_t2)) * 0.9
+    lim_max = max(max(strengths_t1), max(strengths_t2)) * 1.1
     ax.plot([lim_min, lim_max], [lim_min, lim_max], "k--", linewidth=0.8,
-            label="Identity (rest = emotion)")
+            label="Identity")
     for i, sub in enumerate(paired_subs):
-        ax.annotate(sub.replace("sub-", ""), (rest_strengths[i], fe_strengths[i]),
+        ax.annotate(sub.replace("sub-", ""), (strengths_t1[i], strengths_t2[i]),
                     fontsize=6, ha="center", va="bottom")
-    ax.set_xlabel("QPP Strength (rest)")
-    ax.set_ylabel("QPP Strength (emotion task)")
-    ax.set_title(f"QPP Strength: Resting-State vs. Emotion Task | {method.upper()}")
+    ax.set_xlabel(f"QPP Strength ({t1})")
+    ax.set_ylabel(f"QPP Strength ({t2})")
+    ax.set_title(f"QPP Strength: {t1.upper()} vs. {t2.upper()} | {method.upper()}")
     ax.legend(fontsize=8)
     plt.tight_layout()
 
     out_path = out_dir / f"group_{method}_rest_vs_fe.png"
     fig.savefig(str(out_path), dpi=150)
     plt.close(fig)
-    log.info(f"  Rest vs. emotion comparison saved → {out_path.name}")
+    log.info(f"  Task comparison saved → {out_path.name}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -278,7 +296,7 @@ def plot_rest_vs_fe_comparison(subjects: list, method: str, out_dir: Path):
 def main():
     parser = argparse.ArgumentParser(description="Group visualization for QPP results")
     parser.add_argument("--subjects", nargs="+", default=None)
-    parser.add_argument("--tasks", nargs="+", default=["rest", "fe"])
+    parser.add_argument("--tasks", nargs="+", default=["rest", "emotion"])
     parser.add_argument("--method", default="swc", choices=["swc", "seed"],
                         help="QPP method to visualize")
     args = parser.parse_args()
@@ -286,14 +304,22 @@ def main():
     if args.subjects:
         subjects = args.subjects
     else:
-        subjects = sorted([d.name for d in QPP_DIR.iterdir()
-                           if d.is_dir() and d.name.startswith("sub-")])
+        # Check both results/ and data/processed/ for subjects starting with sub-
+        sub_dirs = set()
+        if QPP_DIR.exists():
+            sub_dirs.update([d.name for d in QPP_DIR.iterdir() if d.is_dir() and d.name.startswith("sub-")])
+            sub_dirs.update([f.name.split("_")[0] for f in QPP_DIR.glob("sub-*")])
+        if PREPROC_DIR.exists():
+            sub_dirs.update([d.name for d in PREPROC_DIR.iterdir() if d.is_dir() and d.name.startswith("sub-")])
+            sub_dirs.update([f.name.split("_")[0] for f in PREPROC_DIR.glob("sub-*")])
+            
+        subjects = sorted(list(sub_dirs))
 
     if not subjects:
-        log.error("No processed subjects found in qpp_analysis/. Run 02_qpp_detection.py first.")
+        log.error("No processed subjects found in results/ or data/processed/. Check your data directories.")
         sys.exit(1)
 
-    log.info(f"Visualizing {len(subjects)} subject(s)  method={args.method}")
+    log.info(f"Visualizing {len(subjects)} subject(s): {subjects} | method={args.method}")
 
     for task in args.tasks:
         log.info(f"\n── Task: {task} ──")
@@ -305,11 +331,11 @@ def main():
         plot_periodicity_summary(records, task, args.method, FIG_DIR)
         plot_motion_qc_summary(subjects, task, FIG_DIR)
 
-    # Cross-task comparison (only if both tasks were processed)
-    if "rest" in args.tasks and "fe" in args.tasks:
-        plot_rest_vs_fe_comparison(subjects, args.method, FIG_DIR)
+    # Cross-task comparison (if multiple tasks are supplied)
+    if len(args.tasks) >= 2:
+        plot_rest_vs_fe_comparison(subjects, args.method, FIG_DIR, args.tasks)
 
-    log.info("\nVisualization complete.  Figures → outputs/figures/")
+    log.info("\nVisualization complete. Figures saved → outputs/figures/")
 
 
 if __name__ == "__main__":

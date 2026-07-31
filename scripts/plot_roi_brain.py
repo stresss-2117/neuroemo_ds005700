@@ -26,8 +26,15 @@ template = datasets.load_mni152_template(resolution=1)
 # ══════════════════════════════════════════════════════════════
 def plot_fig(tmap, nrow, ncol, figsize, annotate=True, save=False, close=False,
              display_mode='x', labelsize=12, orientation='vertical',
-             cbar_label='ReHo Difference', plot_save_path='figure.png'):
-
+             cbar_label='ReHo Difference', plot_save_path='figure.png',
+             pct_clip=98, threshold_pct=40):
+    """
+    Same as before, but:
+    - color range set from a percentile of |data|, not the raw max
+      (one outlier ROI no longer blows out the whole scale)
+    - a threshold hides near-zero/background voxels instead of
+      painting them the same washed-out center color
+    """
     if isinstance(tmap, str):
         img = nb.load(tmap)
     else:
@@ -38,29 +45,37 @@ def plot_fig(tmap, nrow, ncol, figsize, annotate=True, save=False, close=False,
         'y': np.linspace(-100, 70, ncol * nrow, dtype=int).tolist(),
         'z': np.linspace(-62, 72, ncol * nrow, dtype=int).tolist()
     }
-    print(f'Display mode: {display_mode}, \nCoordinates: {cut_coords[display_mode]}')
     counter = 0
 
-    from nilearn import plotting
-    fig, axes = plt.subplots(nrow, ncol+1, figsize=figsize, gridspec_kw={'width_ratios': [1]*ncol + [0.05]})
+    fig, axes = plt.subplots(nrow, ncol+1, figsize=figsize,
+                              gridspec_kw={'width_ratios': [1]*ncol + [0.05]})
     gs = axes[0, ncol].get_gridspec()
     for ax in axes[0:, -1]:
         ax.remove()
     ax_colorbar = fig.add_subplot(gs[0:, -1])
 
-    for row in range(0, nrow):
-        for col in range(0, ncol):
-            plotting.plot_stat_map(img, title='', black_bg=True, bg_img=template,
-                                   axes=axes[row, col], annotate=annotate,
-                                   display_mode=display_mode, symmetric_cbar=True,
-                                   colorbar=False, cut_coords=[cut_coords[display_mode][counter]])
+    fdata = img.get_fdata()
+    nonzero = fdata[np.abs(fdata) > 1e-8]
+    if nonzero.size == 0:
+        vmax_f = 1.0
+        thresh = 0.0
+    else:
+        vmax_f = np.percentile(np.abs(nonzero), pct_clip)
+        thresh = np.percentile(np.abs(nonzero), threshold_pct)
+
+    for row in range(nrow):
+        for col in range(ncol):
+            plotting.plot_stat_map(
+                img, title='', black_bg=True, bg_img=template,
+                axes=axes[row, col], annotate=annotate,
+                display_mode=display_mode, symmetric_cbar=True,
+                colorbar=False, cut_coords=[cut_coords[display_mode][counter]],
+                vmax=vmax_f, threshold=thresh,          # <- the actual fix
+            )
             counter += 1
 
     font_properties = {'family': 'serif', 'size': labelsize}
     cmap = mpl.colormaps['cold_hot']
-    fdata = img.get_fdata()
-    fdata_max = np.abs(fdata).max()
-    vmax_f = fdata_max + (fdata_max * 0.05)
     norm = mpl.colors.Normalize(vmin=-vmax_f, vmax=vmax_f)
 
     cb1 = mpl.colorbar.ColorbarBase(ax_colorbar, cmap=cmap, norm=norm, orientation=orientation)
@@ -72,16 +87,24 @@ def plot_fig(tmap, nrow, ncol, figsize, annotate=True, save=False, close=False,
         plt.savefig(plot_save_path, dpi=300, bbox_inches='tight')
     if close:
         plt.close()
-
     return fig, axes
 
 
-def plot_surface(tmap, cmap='cold_hot', save_path='cortex_surface.png'):
-    """Cortical surface rendering (lateral+medial, both hemispheres) — clean discrete boundaries."""
+def plot_surface(tmap, cmap='cold_hot', save_path='cortex_surface.png',
+                  pct_clip=98, threshold_pct=40):
     from nilearn import datasets, surface, plotting
     import matplotlib.pyplot as plt
+    import numpy as np
 
     fsaverage = datasets.fetch_surf_fsaverage()
+
+    fdata = tmap.get_fdata()
+    nonzero = fdata[np.abs(fdata) > 1e-8]
+    if nonzero.size == 0:
+        vmax_f, thresh = 1.0, 0.0
+    else:
+        vmax_f = np.percentile(np.abs(nonzero), pct_clip)
+        thresh = np.percentile(np.abs(nonzero), threshold_pct)
 
     fig, axes = plt.subplots(2, 2, subplot_kw={'projection': '3d'}, figsize=(10, 8))
     fig.suptitle('Cortex')
@@ -95,21 +118,23 @@ def plot_surface(tmap, cmap='cold_hot', save_path='cortex_surface.png'):
 
     for ax, (hemi, view, infl, sulc) in zip(axes.flat, views_hemis):
         pial = fsaverage.pial_left if hemi == 'left' else fsaverage.pial_right
-        texture = surface.vol_to_surf(tmap, pial, interpolation='nearest_most_frequent')  # <- key fix: no blending across boundaries
+        texture = surface.vol_to_surf(tmap, pial, interpolation='linear')
 
         plotting.plot_surf_stat_map(
             infl, texture,
             hemi=hemi, view=view,
             bg_map=sulc,
+            bg_on_data=True,          # still valid, shading shows through
             cmap=cmap,
-            colorbar=(ax is axes.flat[-1]),  # only one shared colorbar
+            vmax=vmax_f,
+            threshold=thresh,
+            colorbar=(ax is axes.flat[-1]),
             axes=ax,
         )
 
     plt.savefig(save_path, dpi=200, bbox_inches='tight')
     plt.close(fig)
     return fig
-
 # ══════════════════════════════════════════════════════════════
 # vals2atlas() — SAME LOGIC as your professor's version,
 # adapted to use nilearn's atlas objects directly (no CSV files
