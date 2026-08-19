@@ -45,7 +45,7 @@ from matplotlib.colors import ListedColormap
 from matplotlib.patches import Patch
 
 RESULTS_DIR = "results"
-OUT_DIR = "results/figures/overlap_v2"
+OUT_DIR = "results/figures/yeo7_overlap"
 os.makedirs(OUT_DIR, exist_ok=True)
 
 ALL_SUBJECTS = [f"sub-{i:02d}" for i in range(1, 41)]

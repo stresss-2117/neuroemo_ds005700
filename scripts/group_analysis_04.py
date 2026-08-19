@@ -108,11 +108,11 @@ def plot_group_summary(subject_ids):
     ax.legend()
 
     plt.tight_layout()
-    os.makedirs("results", exist_ok=True)
-    plt.savefig("results/group_qpp_summary.png", dpi=150,
+    os.makedirs("results/group", exist_ok=True)
+    plt.savefig("results/group/group_qpp_summary.png", dpi=150,
                 bbox_inches='tight')
     plt.show()
-    print("Saved → results/group_qpp_summary.png")
+    print("Saved → results/group/group_qpp_summary.png")
 
     # Print summary table
     print("\n" + "="*60)
@@ -129,8 +129,8 @@ def plot_group_summary(subject_ids):
 
     # Save as CSV
     if df_rest is not None:
-        df_rest.to_csv("results/group_rest_results.csv", index=False)
+        df_rest.to_csv("results/group/group_rest_results.csv", index=False)
     if df_fe is not None:
-        df_fe.to_csv("results/group_emotion_results.csv", index=False)
-    print("\nSaved CSVs → results/group_rest_results.csv")
-    print("           → results/group_emotion_results.csv")
+        df_fe.to_csv("results/group/group_emotion_results.csv", index=False)
+    print("\nSaved CSVs → results/group/group_rest_results.csv")
+    print("           → results/group/group_emotion_results.csv")

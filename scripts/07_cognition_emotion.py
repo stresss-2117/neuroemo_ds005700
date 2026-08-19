@@ -32,7 +32,7 @@ REHO_DIR = BASE_DIR / "reho_analysis"
 ACT_DIR  = BASE_DIR / "activation_contrast"
 GLM_DIR  = BASE_DIR / "glm_analysis"
 QPP_RESULTS_DIR = BASE_DIR / "results"
-OUT_DIR  = BASE_DIR / "outputs" / "figures" / "overlap"
+OUT_DIR  = BASE_DIR / "results" / "figures" / "yeo7_overlap"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 FDR_ALPHA = 0.05

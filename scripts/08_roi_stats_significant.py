@@ -232,7 +232,13 @@ def significant_roi_map(atlas_name):
         if name in name_to_diff:
             out[atlas_data == roi_id] = name_to_diff[name]
 
-    sig_img = nb.Nifti1Image(out, affine=atlas_img.affine)
+    from nilearn.image import resample_to_img
+    from nilearn.datasets import load_mni152_template
+
+    sig_img_raw = nb.Nifti1Image(out, affine=atlas_img.affine)
+
+    mni_template = load_mni152_template(resolution=2)
+    sig_img = resample_to_img(sig_img_raw, mni_template, interpolation="nearest")
 
     nifti_path = f"{OUT_DIR}/{atlas_name}_sig_diff.nii.gz"
     nb.save(sig_img, nifti_path)

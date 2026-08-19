@@ -189,7 +189,7 @@ if __name__ == "__main__":
 
         print(f"  Group average from {len(used)} subjects")
 
-        tmp_path = f"results/{task_name}/group_average_MNI_ANTs.nii.gz"
+        tmp_path = f"results/group/group_average_{task_name}_MNI_ANTs.nii.gz"
         nib.save(group_img, tmp_path)
 
         all_rows = []
